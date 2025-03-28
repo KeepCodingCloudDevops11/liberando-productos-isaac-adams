@@ -1,0 +1,158 @@
+version: 2.1
+
+jobs:
+  build-and-test:
+    docker:
+      # Imagen principal para el job
+      - image: cimg/python:3.9
+      
+        
+    steps:
+      - checkout
+      - setup_remote_docker
+      
+      # Instalar dependencias
+      - run:
+          name: Instalar dependencias
+          command: |
+            python -m venv venv
+            . venv/bin/activate
+            pip install -r requirements.txt
+            pip install pytest redis
+            pip install pytest-cov
+            pip install --upgrade pytest pytest-cov
+            pip install black
+            pip install ggshield
+      - run:
+          name: Formatear código
+          command: |
+            . venv/bin/activate
+            black .
+            black --check . 
+      
+     
+      
+      # Ejecutar pruebas
+      - run:
+          name: Ejecutar pruebas
+          command: |
+            . venv/bin/activate
+            pytest tests/ \
+              --junitxml=test-results/junit.xml \
+              --cov=. \
+              --cov-report=html:test-results/coverage-html \
+      
+      # Guardar artefactos de tests
+      - store_test_results:
+          path: test-results
+      
+      # Guardar artefactos adicionales
+      - store_artifacts:
+          path: test-results
+          destination: test-reports
+      
+  deploy:
+    docker:
+      - image: cimg/base:2024.02
+    steps:
+      - checkout
+      - setup_remote_docker
+      # Construcción de imagen Docker
+      - run:
+          name: Construir imagen Docker
+          command: |
+            docker build -t $DOCKERHUB_USER/$IMAGE_NAME:$CIRCLE_SHA1 .
+      
+      # Login a Docker Hub
+      - run:
+          name: Login a Docker Hub
+          command: |
+            echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin
+      
+      # Push de imagen
+      - run:
+          name: Push imagen a Docker Hub
+          command: |
+            docker push $DOCKERHUB_USER/$IMAGE_NAME:$CIRCLE_SHA1
+            
+  update-k8s-manifests:
+    docker:
+      - image: cimg/python:3.9
+    steps:
+      - checkout
+    
+      # Instalar herramientas necesarias
+      - run:
+          name: Instalar herramientas adicionales
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y git
+            mkdir -p ~/.ssh
+            ssh-keyscan github.com >> ~/.ssh/known_hosts
+      
+
+      - run:
+          name: Configurar Git
+          command: |
+            git config --global user.email "ci-bot@example.com"
+            git config --global user.name "CircleCI Bot"
+            
+      - run:
+          name: Clonar repositorio de manifiestos
+          command: |
+            # Usar HTTPS en lugar de SSH
+            git clone https://github.com/IsaacAM50/calculadora-manifiestos-argo.git manifests
+            
+      - run:
+          name: Actualizar imagen con sed
+          command: |
+            cd manifests
+            
+            # Guardar la nueva imagen en una variable
+            NEW_IMAGE="$DOCKERHUB_USER/$IMAGE_NAME:$CIRCLE_SHA1"
+            echo "Nueva imagen: $NEW_IMAGE"
+            
+            # Mostrar la línea actual de la imagen
+            echo "Imagen actual:"
+            grep -n "image: isaacam/calculadora_app" manifest/deployment.yaml
+            
+            # Reemplazar la imagen usando sed
+            sed -i "s|image: isaacam/calculadora_app:.*|image: $NEW_IMAGE|g" manifest/deployment.yaml
+            
+            # Verificar que el cambio se hizo correctamente
+            echo "Imagen actualizada:"
+            grep -n "image: $DOCKERHUB_USER/$IMAGE_NAME" manifest/deployment.yaml
+            
+      - run:
+          name: Commit y push de los cambios
+          command: |
+            cd manifests
+            git add .
+            git commit -m "Actualizar imagen a $DOCKERHUB_USER/$IMAGE_NAME:$CIRCLE_SHA1"
+            
+            # Configurar credenciales para GitHub con HTTPS y token
+            git config credential.helper 'store --file=.git/credentials'
+            echo "https://${GITHUB_TOKEN}@github.com" > .git/credentials
+            
+            # Push usando HTTPS con token
+            git push https://${GITHUB_TOKEN}@github.com/IsaacAM50/calculadora-manifiestos-argo.git main
+
+workflows:
+  version: 2
+  build-test-deploy:
+    jobs:
+      - build-and-test
+      - deploy:
+          requires:
+            - build-and-test
+          filters:
+            branches:
+              only:
+                - main
+      - update-k8s-manifests:
+          requires:
+            - deploy
+          filters:
+            branches:
+              only:
+                - main
