@@ -1,0 +1,30 @@
+# Default values for simple-server-chart
+
+replicaCount: 1
+
+image:
+  repository: simple-server
+  tag: 0.0.1
+  pullPolicy: Never  # Cambiado a "Never" para imágenes locales
+
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
