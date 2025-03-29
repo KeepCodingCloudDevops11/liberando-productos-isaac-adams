@@ -11,8 +11,8 @@ jobs:
       - checkout
       
       # Paso 2: Configuración de entorno Python
-      - setup_remote_docker:
-          version: 20.10.14
+      - setup_remote_docker
+          
       
       # Paso 3: Restaurar cache de dependencias (si existe)
       - restore_cache:
