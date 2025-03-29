@@ -3,8 +3,8 @@ version: 2.1
 jobs:
   build:
     docker:
-      # Imagen de Python 3.11
-      - image: cimg/python:3.11
+      # Actualizo a Python 3.12 para que coincida con tu entorno
+      - image: cimg/python:3.12
     
     steps:
       # Paso 1: Checkout del código
@@ -46,7 +46,16 @@ jobs:
       - run:
           name: Ejecutar linting
           command: |
-            python3 -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+            # Solo analizar los archivos de nuestro proyecto, excluyendo venv y carpetas de dependencias
+            python3 -m flake8 --exclude=venv,\
+            .git,\
+            __pycache__,\
+            .pytest_cache,\
+            .eggs,\
+            *.egg,\
+            build,\
+            dist \
+            --count --select=E9,F63,F7,F82 --show-source --statistics
       
       # Paso 7: Ejecutar tests
       - run:
