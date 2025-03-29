@@ -12,7 +12,6 @@ jobs:
       
       # Paso 2: Configuración de entorno Python
       - setup_remote_docker
-          
       
       # Paso 3: Restaurar cache de dependencias (si existe)
       - restore_cache:
@@ -25,38 +24,38 @@ jobs:
       - run:
           name: Instalar dependencias
           command: |
-            python -m venv venv
-            . venv/bin/activate
-            pip install --upgrade pip
+            # Verificar la versión de Python
+            python3 --version
+            
+            # Instalar dependencias directamente sin entorno virtual
+            python3 -m pip install --user --upgrade pip
             
             # Instalar desde requirements.txt
-            pip install -r requirements.txt
+            python3 -m pip install --user -r requirements.txt
             
-            # Instalar herramientas de desarrollo para CI/CD (si no están en requirements.txt)
-            pip install pytest pytest-cov flake8 httpx
+            # Instalar herramientas de desarrollo para CI/CD
+            python3 -m pip install --user pytest pytest-cov flake8 httpx
 
       # Paso 5: Guardar cache de dependencias
       - save_cache:
           paths:
-            - ./venv
+            - ~/.local/lib/python3.11/site-packages
           key: v1-dependencies-{{ checksum "requirements.txt" }}
           
       # Paso 6: Ejecutar linting
       - run:
           name: Ejecutar linting
           command: |
-            . venv/bin/activate
-            flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+            python3 -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
       
       # Paso 7: Ejecutar tests
       - run:
           name: Ejecutar tests
           command: |
-            . venv/bin/activate
             # Asumiendo que el archivo principal se llama app.py
             # Si tu archivo tiene otro nombre, modifica esto
             export PYTHONPATH=$PYTHONPATH:$(pwd)
-            pytest --cov=./ --cov-report=xml
+            python3 -m pytest --cov=./ --cov-report=xml
           
       # Paso 8: Almacenar resultados de tests
       - store_artifacts:
