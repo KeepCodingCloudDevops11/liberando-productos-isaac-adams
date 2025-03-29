@@ -1,121 +1,123 @@
-# Nuevo job para construir y publicar imagen Docker
-build_and_push_image:
-  executor: docker/docker
-  steps:
-    - checkout
-    - setup_remote_docker
-    - docker/check
-    - run:
-        name: Generar tags para la imagen Docker
-        command: |
-          # Generar tag basado en el hash del commit
-          echo 'export DOCKER_TAG=$(echo ${CIRCLE_SHA1} | cut -c -7)' >> $BASH_ENV
-          
-          # Para rama main, agregar también el tag 'latest'
-          echo 'export DOCKER_ADDITIONAL_TAGS="latest"' >> $BASH_ENV
-          
-          source $BASH_ENV
-          echo "Tags a utilizar: ${DOCKER_TAG},${DOCKER_ADDITIONAL_TAGS}"
-    
-    # Login en GHCR usando GITHUB_TOKEN
-    - docker/login:
-        registry: ghcr.io
-        username: ${GITHUB_USERNAME}
-        password: ${GITHUB_TOKEN}
-    
-    # Construir y publicar imagen
-    - docker/build:
-        image: ${DOCKER_IMAGE_NAME}
-        tag: ${DOCKER_TAG},${DOCKER_ADDITIONAL_TAGS}
-        registry: ghcr.io
-        dockerfile: Dockerfile
-        extra_build_args: |
-          --label org.opencontainers.image.source=${CIRCLE_REPOSITORY_URL}
-          --label org.opencontainers.image.revision=${CIRCLE_SHA1}version: 2.1
+version: 2.1
 
 # Orbs son paquetes reutilizables de configuración CircleCI
 orbs:
-docker: circleci/docker@2.2.0
+  docker: circleci/docker@2.2.0
 
 jobs:
-build:
-  docker:
-    # Actualizo a Python 3.12 para que coincida con tu entorno
-    - image: cimg/python:3.12
-  
-  steps:
-    # Paso 1: Checkout del código
-    - checkout
+  build:
+    docker:
+      # Imagen de Python 3.12
+      - image: cimg/python:3.12
     
-    # Paso 2: Configuración de entorno Python
-    - setup_remote_docker
-    
-    # Paso 3: Restaurar cache de dependencias (si existe)
-    - restore_cache:
-        keys:
-          - v1-dependencies-{{ checksum "requirements.txt" }}
-          # Fallback a la última cache si no hay coincidencia exacta
-          - v1-dependencies-
-    
-    # Paso 4: Instalación de dependencias
-    - run:
-        name: Instalar dependencias
-        command: |
-          # Verificar la versión de Python
-          python3 --version
+    steps:
+      # Paso 1: Checkout del código
+      - checkout
+      
+      # Paso 2: Configuración de entorno Python
+      - setup_remote_docker
+      
+      # Paso 3: Restaurar cache de dependencias (si existe)
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "requirements.txt" }}
+            # Fallback a la última cache si no hay coincidencia exacta
+            - v1-dependencies-
+      
+      # Paso 4: Instalación de dependencias
+      - run:
+          name: Instalar dependencias
+          command: |
+            # Verificar la versión de Python
+            python3 --version
+            
+            # Instalar dependencias directamente sin entorno virtual
+            python3 -m pip install --user --upgrade pip
+            
+            # Instalar desde requirements.txt
+            python3 -m pip install --user -r requirements.txt
+            
+            # Instalar herramientas de desarrollo para CI/CD
+            python3 -m pip install --user pytest pytest-cov flake8 httpx
+      
+      # Paso 5: Guardar cache de dependencias
+      - save_cache:
+          paths:
+            - ~/.local/lib/python3.12/site-packages
+          key: v1-dependencies-{{ checksum "requirements.txt" }}
           
-          # Instalar dependencias directamente sin entorno virtual
-          python3 -m pip install --user --upgrade pip
+      # Paso 6: Ejecutar linting
+      - run:
+          name: Ejecutar linting
+          command: |
+            # Solo analizar los archivos de nuestro proyecto, excluyendo venv y carpetas de dependencias
+            python3 -m flake8 --exclude=venv,\
+            .git,\
+            __pycache__,\
+            .pytest_cache,\
+            .eggs,\
+            *.egg,\
+            build,\
+            dist \
+            --count --select=E9,F63,F7,F82 --show-source --statistics
+      
+      # Paso 7: Ejecutar tests
+      - run:
+          name: Ejecutar tests
+          command: |
+            # Asumiendo que el archivo principal se llama app.py
+            # Si tu archivo tiene otro nombre, modifica esto
+            export PYTHONPATH=$PYTHONPATH:$(pwd)
+            python3 -m pytest --cov=./ --cov-report=xml
           
-          # Instalar desde requirements.txt
-          python3 -m pip install --user -r requirements.txt
-          
-          # Instalar herramientas de desarrollo para CI/CD
-          python3 -m pip install --user pytest pytest-cov flake8 httpx
+      # Paso 8: Almacenar resultados de tests
+      - store_artifacts:
+          path: coverage.xml
+          destination: coverage-report
 
-    # Paso 5: Guardar cache de dependencias
-    - save_cache:
-        paths:
-          - ~/.local/lib/python3.11/site-packages
-        key: v1-dependencies-{{ checksum "requirements.txt" }}
-        
-    # Paso 6: Ejecutar linting
-    - run:
-        name: Ejecutar linting
-        command: |
-          # Solo analizar los archivos de nuestro proyecto, excluyendo venv y carpetas de dependencias
-          python3 -m flake8 --exclude=venv,\
-          .git,\
-          __pycache__,\
-          .pytest_cache,\
-          .eggs,\
-          *.egg,\
-          build,\
-          dist \
-          --count --select=E9,F63,F7,F82 --show-source --statistics
-    
-    # Paso 7: Ejecutar tests
-    - run:
-        name: Ejecutar tests
-        command: |
-          # Asumiendo que el archivo principal se llama app.py
-          # Si tu archivo tiene otro nombre, modifica esto
-          export PYTHONPATH=$PYTHONPATH:$(pwd)
-          python3 -m pytest --cov=./ --cov-report=xml
-        
-    # Paso 8: Almacenar resultados de tests
-    - store_artifacts:
-        path: coverage.xml
-        destination: coverage-report
+  # Job para construir y publicar imagen Docker
+  build_and_push_image:
+    executor: docker/docker
+    steps:
+      - checkout
+      - setup_remote_docker
+      - docker/check
+      - run:
+          name: Generar tags para la imagen Docker
+          command: |
+            # Generar tag basado en el hash del commit
+            echo 'export DOCKER_TAG=$(echo ${CIRCLE_SHA1} | cut -c -7)' >> $BASH_ENV
+            
+            # Para rama main, agregar también el tag 'latest'
+            echo 'export DOCKER_ADDITIONAL_TAGS="latest"' >> $BASH_ENV
+            
+            source $BASH_ENV
+            echo "Tags a utilizar: ${DOCKER_TAG},${DOCKER_ADDITIONAL_TAGS}"
+      
+      # Login en GHCR usando GITHUB_TOKEN
+      - docker/login:
+          registry: ghcr.io
+          username: ${GITHUB_USERNAME}
+          password: ${GITHUB_TOKEN}
+      
+      # Construir y publicar imagen
+      - docker/build:
+          image: ${DOCKER_IMAGE_NAME}
+          tag: ${DOCKER_TAG},${DOCKER_ADDITIONAL_TAGS}
+          registry: ghcr.io
+          dockerfile: Dockerfile
+          extra_build_args: |
+            --label org.opencontainers.image.source=${CIRCLE_REPOSITORY_URL}
+            --label org.opencontainers.image.revision=${CIRCLE_SHA1}
 
 workflows:
-version: 2
-build_test_deploy:
-  jobs:
-    - build
-    - build_and_push_image:
-        requires:
-          - build
-        filters:
-          branches:
-            only: main
+  version: 2
+  build_test_deploy:
+    jobs:
+      - build
+      - build_and_push_image:
+          requires:
+            - build
+          filters:
+            branches:
+              only: main
