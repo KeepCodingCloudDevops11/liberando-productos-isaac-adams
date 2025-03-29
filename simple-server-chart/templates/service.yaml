@@ -11,5 +11,11 @@ spec:
       targetPort: {{ .Values.service.targetPort }}
       protocol: TCP
       name: http
+    {{- if .Values.metrics.enabled }}
+    - port: {{ .Values.metrics.svc.port }}
+      targetPort: {{ .Values.metrics.svc.port }}
+      protocol: TCP
+      name: {{ .Values.metrics.svc.name }}
+    {{- end }}
   selector:
     {{- include "simple-server-chart.selectorLabels" . | nindent 4 }}

@@ -28,3 +28,12 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+metrics:
+  # -- Indicates whether this app will expose metrics
+  enabled: true
+  # -- Service configuration used for metrics
+  svc:
+    # -- Service port number used for metrics
+    port: 8000
+    # -- Service port name used for metrics
+    name: metrics
