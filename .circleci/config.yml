@@ -2,7 +2,7 @@ version: 2.1
 
 # Orbs son paquetes reutilizables de configuración CircleCI
 orbs:
-  docker: circleci/docker@2.2.0
+  docker: circleci/docker@2.4.0
 
 jobs:
   build:
@@ -81,34 +81,29 @@ jobs:
     steps:
       - checkout
       - setup_remote_docker
-      - docker/check
       - run:
-          name: Generar tags para la imagen Docker
+          name: Login a GitHub Container Registry
+          command: |
+            echo "$GITHUB_TOKEN" | docker login ghcr.io -u $GITHUB_USERNAME --password-stdin
+      - run:
+          name: Construir imagen Docker
           command: |
             # Generar tag basado en el hash del commit
-            echo 'export DOCKER_TAG=$(echo ${CIRCLE_SHA1} | cut -c -7)' >> $BASH_ENV
+            DOCKER_TAG=$(echo ${CIRCLE_SHA1} | cut -c -7)
             
-            # Para rama main, agregar también el tag 'latest'
-            echo 'export DOCKER_ADDITIONAL_TAGS="latest"' >> $BASH_ENV
-            
-            source $BASH_ENV
-            echo "Tags a utilizar: ${DOCKER_TAG},${DOCKER_ADDITIONAL_TAGS}"
-      
-      # Login en GHCR usando GITHUB_TOKEN
-      - docker/login:
-          registry: ghcr.io
-          username: ${GITHUB_USERNAME}
-          password: ${GITHUB_TOKEN}
-      
-      # Construir y publicar imagen
-      - docker/build:
-          image: ${DOCKER_IMAGE_NAME}
-          tag: ${DOCKER_TAG},${DOCKER_ADDITIONAL_TAGS}
-          registry: ghcr.io
-          dockerfile: Dockerfile
-          extra_build_args: |
-            --label org.opencontainers.image.source=${CIRCLE_REPOSITORY_URL}
-            --label org.opencontainers.image.revision=${CIRCLE_SHA1}
+            # Construir la imagen con múltiples tags
+            docker build -t ghcr.io/${DOCKER_IMAGE_NAME}:${DOCKER_TAG} \
+                         -t ghcr.io/${DOCKER_IMAGE_NAME}:latest \
+                         --label org.opencontainers.image.source=${CIRCLE_REPOSITORY_URL} \
+                         --label org.opencontainers.image.revision=${CIRCLE_SHA1} \
+                         .
+      - run:
+          name: Publicar imagen Docker
+          command: |
+            # Publicar todas las versiones de la imagen
+            DOCKER_TAG=$(echo ${CIRCLE_SHA1} | cut -c -7)
+            docker push ghcr.io/${DOCKER_IMAGE_NAME}:${DOCKER_TAG}
+            docker push ghcr.io/${DOCKER_IMAGE_NAME}:latest
 
 workflows:
   version: 2
