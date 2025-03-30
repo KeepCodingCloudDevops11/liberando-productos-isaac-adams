@@ -1,0 +1,31 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: fastapi-monitor
+  namespace: monitoring
+  labels:
+    # NO uses la etiqueta release: prometheus aquí
+    # Como serviceMonitorSelectorNilUsesHelmValues: false, Prometheus aceptará cualquier ServiceMonitor
+    # a menos que haya configurado explícitamente un selector
+    app: fastapi-app
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: simple-server-chart  # Debe coincidir con las etiquetas del servicio
+  namespaceSelector:
+    matchNames:
+    - fastapi-app
+  endpoints:
+  - port: metrics  # Debe coincidir con el nombre del puerto en tu Service
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 10s
+    honorLabels: true
+  # Agregar relabelings útiles
+  - relabelings:
+    - sourceLabels: [__meta_kubernetes_pod_name]
+      action: replace
+      targetLabel: pod
+    - sourceLabels: [__meta_kubernetes_namespace]
+      action: replace
+      targetLabel: namespace

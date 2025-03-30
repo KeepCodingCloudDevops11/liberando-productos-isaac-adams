@@ -121,33 +121,28 @@ alertmanager:
           {{ end }}
 
 ## Manages Prometheus and Alertmanager components
-prometheusOperator:
-  enabled: true
-
-additionalPrometheusRulesMap:
-  rule-name:
+additionalPrometheusRules:
+  - name: fastapi-cpu-alert
     groups:
-      - name: ruleset_1
+      - name: fastapi.rules
         rules:
-          - alert: MongoDBDown
-            expr: mongodb_up == 0
-            for: 0m
+          - alert: FastApiCustomCpuAlert
+            expr: fastapi_cpu_usage > fastapi_cpu_request
+            for: 1m
             labels:
-              severity: critical
+              severity: high
             annotations:
-              summary: MongoDB Down (instance {{ $labels.instance }})
-              description: "MongoDB instance is down"
+              summary: "High CPU usage on FastAPI container"
+              description: "Simulated CPU usage exceeds request in FastAPI container."
 
-          - alert: fastApiConsumingMoreThanRequest
-            expr: avg(container_memory_usage_bytes{pod=~"my-app-fast-api-webapp-.*"}) by (pod) > avg(kube_pod_container_resource_requests{resource="memory",container="fast-api-webapp"}) by (pod)
-            for: 0m
+          - alert: TestSlackAlert
+            expr: increase(bye_requests_total[2m]) > 5
+            for: 30s
             labels:
               severity: critical
-              alertname: "fast-api-webapp container is consuming more than requested"
             annotations:
-              summary: Pod {{ $labels.pod }} consuming more than requested
-              description: "Pod more less than request"
-              message: Pod {{ $labels.pod }} is consuming more than requested
+              summary: "⚠️ Alerta de prueba para Slack"
+              description: "Se ha accedido al endpoint /bye más de 5 veces en los últimos 2 minutos"
 
 grafana:
   plugins:

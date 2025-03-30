@@ -1,11 +1,12 @@
+
 # Default values for simple-server-chart
 
 replicaCount: 1
 
 image:
   repository: simple-server
-  tag: 0.0.1
-  pullPolicy: Never  # Cambiado a "Never" para imágenes locales
+  tag: latest
+  pullPolicy: IfNotPresent
 
 nameOverride: ""
 fullnameOverride: ""
@@ -13,7 +14,7 @@ fullnameOverride: ""
 service:
   type: ClusterIP
   port: 80
-  targetPort: 8000
+  targetPort: 8081
 
 resources:
   limits:
@@ -24,16 +25,41 @@ resources:
     memory: 64Mi
 
 nodeSelector: {}
-
+namespaceSelector:
+  matchNames:
+  - fastapi-app
 tolerations: []
 
 affinity: {}
+
+# Configuración de métricas y monitoreo
 metrics:
-  # -- Indicates whether this app will expose metrics
+  # -- Indica si esta aplicación expondrá métricas
   enabled: true
-  # -- Service configuration used for metrics
+  # -- Configuración del servicio para métricas
   svc:
-    # -- Service port number used for metrics
-    port: 8000
-    # -- Service port name used for metrics
+    # -- Número de puerto para métricas (usar el mismo que targetPort si la app expone métricas en el mismo puerto)
+    port: 8081
+    # -- Nombre del puerto para métricas (DEBE SER DIFERENTE DE "http")
     name: metrics
+  # -- Configuración del ServiceMonitor
+  serviceMonitor:
+    enabled: true
+    namespace: "monitoring"
+    interval: "15s"
+    scrapeTimeout: "10s"
+    honorLabels: true
+    additionalLabels:
+      release: prometheus
+    relabelings:
+    - sourceLabels: [__meta_kubernetes_pod_name]
+      action: replace
+      targetLabel: pod
+    - sourceLabels: [__meta_kubernetes_namespace]
+      action: replace
+      targetLabel: namespace
+    # -- Configuración de metricRelabelings (opcional)
+    metricRelabelings:
+    - sourceLabels: [__name__]
+      regex: server_requests_total|healthcheck_requests_total|main_requests_total|bye_requests_total
+      action: keep

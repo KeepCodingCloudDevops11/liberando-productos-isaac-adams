@@ -3,9 +3,10 @@ Module define fastapi server configuration
 """
 
 from fastapi import FastAPI
+from fastapi.responses import Response  # Añadido para el endpoint metrics
 from hypercorn.asyncio import serve
 from hypercorn.config import Config as HyperCornConfig
-from prometheus_client import Counter
+from prometheus_client import Counter, generate_latest, CONTENT_TYPE_LATEST  # Añadido generate_latest y CONTENT_TYPE_LATEST
 
 app = FastAPI()
 
@@ -13,6 +14,7 @@ REQUESTS = Counter('server_requests_total', 'Total number of requests to this we
 HEALTHCHECK_REQUESTS = Counter('healthcheck_requests_total', 'Total number of requests to healthcheck')
 MAIN_ENDPOINT_REQUESTS = Counter('main_requests_total', 'Total number of requests to main endpoint')
 BYE_ENDPOINT_REQUESTS = Counter('bye_requests_total', 'Total number of requests to bye endpoint')
+
 class SimpleServer:
     """
     SimpleServer class define FastAPI configuration and implemented endpoints
@@ -32,7 +34,7 @@ class SimpleServer:
     @app.get("/health")
     async def health_check():
         """Implement health check endpoint"""
-        # Increment counter used for register the total number of calls in the webserver
+        # Increment counter used for register the total number of calls in the webserver
         REQUESTS.inc()
         # Increment counter used for register the requests to healtcheck endpoint
         HEALTHCHECK_REQUESTS.inc()
@@ -41,7 +43,7 @@ class SimpleServer:
     @app.get("/")
     async def read_main():
         """Implement main endpoint"""
-        # Increment counter used for register the total number of calls in the webserver
+        # Increment counter used for register the total number of calls in the webserver
         REQUESTS.inc()
         # Increment counter used for register the total number of calls in the main endpoint
         MAIN_ENDPOINT_REQUESTS.inc()
@@ -50,6 +52,11 @@ class SimpleServer:
     @app.get("/bye")
     async def read_bye():
         """Implement bye endpoint"""
-
         BYE_ENDPOINT_REQUESTS.inc()
         return {"response": "bye bye"}
+    
+    @app.get("/metrics")
+    async def metrics():
+        """Endpoint para exponer métricas para Prometheus"""
+        # No incrementamos contadores aquí para evitar un bucle infinito
+        return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)

@@ -1,0 +1,36 @@
+{{- if .Values.metrics.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "simple-server-chart.fullname" . }}
+  namespace: {{ .Values.metrics.serviceMonitor.namespace | default "monitoring" }}
+  labels:
+    {{- include "simple-server-chart.labels" . | nindent 4 }}
+    {{- with .Values.metrics.serviceMonitor.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "simple-server-chart.selectorLabels" . | nindent 6 }}
+  # Configurar explícitamente para mirar solo el namespace fastapi-app
+  namespaceSelector:
+    matchNames:
+    - fastapi-app
+  endpoints:
+  - port: {{ .Values.metrics.svc.name }}
+    path: /metrics
+    interval: {{ .Values.metrics.serviceMonitor.interval | default "15s" }}
+    scrapeTimeout: {{ .Values.metrics.serviceMonitor.scrapeTimeout | default "10s" }}
+    {{- if .Values.metrics.serviceMonitor.honorLabels }}
+    honorLabels: {{ .Values.metrics.serviceMonitor.honorLabels }}
+    {{- end }}
+    {{- with .Values.metrics.serviceMonitor.relabelings }}
+    relabelings:
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.metrics.serviceMonitor.metricRelabelings }}
+    metricRelabelings:
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}
