@@ -273,6 +273,8 @@ workflows:
             branches:
               only: main
 ```
+![image](https://github.com/user-attachments/assets/1ab02f1a-cb76-4ac4-b987-4c273824d1d9)
+![image](https://github.com/user-attachments/assets/449d1518-41cc-48e7-879a-c6cfe55f155e)
 
 El pipeline de CircleCI está configurado para:
 
