@@ -1,244 +1,503 @@
-# keepcoding-devops-liberando-productos-practica-final
+# Práctica Final - Liberando Productos DevOps
 
-## Objetivo
+Este proyecto extiende un servidor web básico con FastAPI, implementando mejoras para producción, monitorización y despliegue en Kubernetes. A continuación, se detalla cada uno de los requisitos abordados.
 
-El objetivo es mejorar un proyecto creado previamente para ponerlo en producción, a través de la adicción de una serie de mejoras.
+## Índice
 
-## Proyecto inicial
+- [Descripción del proyecto original](#descripción-del-proyecto-original)
+- [Requisitos de software](#requisitos-de-software)
+- [Mejoras implementadas](#mejoras-implementadas)
+  - [1. Nuevo endpoint](#1-nuevo-endpoint)
+  - [2. Tests unitarios](#2-tests-unitarios)
+  - [3. Helm Chart](#3-helm-chart)
+  - [4. Pipelines CI/CD con CircleCI](#4-pipelines-cicd)
+  - [5. Monitorización y alertas](#5-monitorización-y-alertas)
+- [Guía de despliegue](#guía-de-despliegue)
+- [Verificación y pruebas](#verificación-y-pruebas)
 
-El proyecto inicial es un servidor que realiza lo siguiente:
+## Descripción del proyecto original
 
-- Utiliza [FastAPI](https://fastapi.tiangolo.com/) para levantar un servidor en el puerto `8081` e implementa inicialmente dos endpoints:
-  - `/`: Devuelve en formato `JSON` como respuesta `{"health": "ok"}` y un status code 200.
-  - `/health`: Devuelve en formato `JSON` como respuesta `{"message":"Hello World"}` y un status code 200.
+El proyecto base consiste en un servidor implementado con [FastAPI](https://fastapi.tiangolo.com/) que:
 
-- Se han implementado tests unitarios para el servidor [FastAPI](https://fastapi.tiangolo.com/)
+- Levanta un servidor en el puerto `8081` con dos endpoints iniciales:
+  - `/`: Devuelve `{"message":"Hello World"}` con status code 200
+  - `/health`: Devuelve `{"health": "ok"}` con status code 200
 
-- Utiliza [prometheus-client](https://github.com/prometheus/client_python) para arrancar un servidor de métricas en el puerto `8000` y poder registrar métricas, siendo inicialmente las siguientes:
-  - `Counter('server_requests_total', 'Total number of requests to this webserver')`: Contador que se incrementará cada vez que se haga una llamada a alguno de los endpoints implementados por el servidor (inicialmente `/` y `/health`)
-  - `Counter('healthcheck_requests_total', 'Total number of requests to healthcheck')`: Contador que se incrementará cada vez que se haga una llamada al endpoint `/health`.
-  - `Counter('main_requests_total', 'Total number of requests to main endpoint')`: Contador que se incrementará cada vez que se haga una llamada al endpoint `/`.
+- Utiliza [prometheus-client](https://github.com/prometheus/client_python) para exponer métricas en el puerto `8000`:
+  - `server_requests_total`: Contador del total de llamadas al servidor
+  - `healthcheck_requests_total`: Contador de llamadas al endpoint `/health`
+  - `main_requests_total`: Contador de llamadas al endpoint `/`
 
-## Software necesario
+## Requisitos de software
 
-Es necesario disponer del siguiente software:
+Para trabajar con este proyecto es necesario:
 
-- `Python` en versión `3.11.8` o superior, disponible para los diferentes sistemas operativos en la [página oficial de descargas](https://www.python.org/downloads/release/python-3118/)
+- Python 3.11.8 o superior
+- virtualenv: `pip3 install virtualenv`
+- Docker
+- Kubernetes (Minikube para desarrollo local)
+- Helm
+- Cuenta en CircleCI para la integración continua
+- Cuenta en GitHub y token para GitHub Container Registry
 
-- `virtualenv` para poder instalar las librerías necesarias de Python, se puede instalar a través del siguiente comando:
+## Mejoras implementadas
 
-    ```sh
-    pip3 install virtualenv
-    ```
+### 1. Nuevo endpoint
 
-    En caso de estar utilizando Linux y el comando anterior diera fallos se debe ejecutar el siguiente comando:
+Se ha implementado un nuevo endpoint `/bye` que devuelve un mensaje de despedida.
 
-    ```sh
-    sudo apt-get update && sudo apt-get install -y python3.11-venv
-    ```
+#### Implementación
 
-- `Docker` para poder arrancar el servidor implementado a través de un contenedor Docker, es posible descargarlo a [través de su página oficial](https://docs.docker.com/get-docker/).
+El endpoint ha sido añadido en `src/application/app.py`:
 
-## Ejecución de servidor
+```python
+@app.get("/bye")
+async def read_bye():
+    """Implement bye endpoint"""
+    # Increment counter used for register the total number of calls in the webserver
+    REQUESTS.inc()
+    # Increment counter used for register the total number of calls in the bye endpoint
+    BYE_ENDPOINT_REQUESTS.inc()
+    return {"response": "bye bye"}
+```
 
-### Ejecución directa con Python
+Para la monitorización, se añadió un nuevo contador en el mismo archivo:
 
-1. Instalación de un virtualenv, **realizarlo sólo en caso de no haberlo realizado previamente**:
-   1. Obtener la versión actual de Python instalada para crear posteriormente un virtualenv:
+```python
+BYE_ENDPOINT_REQUESTS = Counter('app_bye_requests_total', 'Total bye endpoint requests')
+```
 
-        ```sh
-        python3 --version
-        ```
+#### Prueba del endpoint
 
-        El comando anterior mostrará algo como lo mostrado a continuación:ç
+```bash
+# Realizar una petición al nuevo endpoint
+curl -X 'GET' 'http://0.0.0.0:8081/bye' -H 'accept: application/json'
 
-        ```sh
-        Python 3.11.8
-        ```
+# Respuesta esperada:
+# {"response":"bye bye"}
+```
 
-   2. Crear de virtualenv en la raíz del directorio para poder instalar las librerías necesarias:
+### 2. Tests unitarios
 
-      ```sh
-      python3 -m venv venv
-      ```
+Se han desarrollado tests unitarios para el nuevo endpoint `/bye`, siguiendo el patrón de los tests existentes.
 
-2. Activar el virtualenv creado en el directorio `venv` en el paso anterior:
+#### Implementación
 
-     ```sh
-     source venv/bin/activate
-     ```
+Los tests se han añadido en `src/tests/app_test.py`:
 
-3. Instalar las librerías necesarias de Python, recogidas en el fichero `requirements.txt`, **sólo en caso de no haber realizado este paso previamente**. Es posible instalarlas a través del siguiente comando:
+```python
+@pytest.mark.asyncio
+async def read_bye_test(self):
+    """Tests the bye endpoint"""
+    response = client.get("/bye")
 
-    ```sh
-    pip3 install -r requirements.txt
-    ```
+    assert response.status_code == 200
+    assert response.json() == {"response": "bye bye"}
+```
 
-4. Ejecución del código para arrancar el servidor:
-
-    ```sh
-    python3 src/app.py
-    ```
-
-5. La ejecución del comando anterior debería mostrar algo como lo siguiente:
-
-    ```sh
-    [2022-04-16 09:44:22 +0000] [1] [INFO] Running on http://0.0.0.0:8081 (CTRL + C to quit)
-    ```
-
-### Ejecución a través de un contenedor Docker
-
-1. Crear una imagen Docker con el código necesario para arrancar el servidor:
-
-    ```sh
-    docker build -t simple-server:0.0.1 .
-    ```
-
-2. Arrancar la imagen construida en el paso anterior mapeando los puertos utilizados por el servidor de FastAPI y el cliente de prometheus:
-
-    ```sh
-    docker run -d -p 8000:8000 -p 8081:8081 --name simple-server simple-server:0.0.1
-    ```
-
-3. Obtener los logs del contenedor creado en el paso anterior:
-
-    ```sh
-    docker logs -f simple-server
-    ```
-
-4. La ejecución del comando anterior debería mostrar algo como lo siguiente:
-
-    ```sh
-    [2022-04-16 09:44:22 +0000] [1] [INFO] Running on http://0.0.0.0:8081 (CTRL + C to quit)
-    ```
-
-## Comprobación de endpoints de servidor y métricas
-
-Una vez arrancado el servidor, utilizando cualquier de las formas expuestas en los apartados anteriores, es posible probar las funcionalidades implementadas por el servidor:
-
-- Comprobación de servidor FastAPI, a través de llamadas a los diferentes endpoints:
-
-  - Realizar una petición al endpoint `/`
-
-      ```sh
-      curl -X 'GET' \
-      'http://0.0.0.0:8081/' \
-      -H 'accept: application/json'
-      ```
-
-      Debería devolver la siguiente respuesta:
-
-      ```json
-      {"message":"Hello World"}
-      ```
-
-  - Realizar una petición al endpoint `/health`
-
-      ```sh
-      curl -X 'GET' \
-      'http://0.0.0.0:8081/health' \
-      -H 'accept: application/json' -v
-      ```
-
-      Debería devolver la siguiente respuesta.
-
-      ```json
-      {"health": "ok"}
-      ```
-
-- Comprobación de registro de métricas, si se accede a la URL `http://0.0.0.0:8000` se podrán ver todas las métricas con los valores actuales en ese momento:
-
-  - Realizar varias llamadas al endpoint `/` y ver como el contador utilizado para registrar las llamadas a ese endpoint, `main_requests_total` ha aumentado, se debería ver algo como lo mostrado a continuación:
-
-    ```sh
-    # TYPE main_requests_total counter
-    main_requests_total 4.0
-    ```
-
-  - Realizar varias llamadas al endpoint `/health` y ver como el contador utilizado para registrar las llamadas a ese endpoint, `healthcheck_requests_total` ha aumentado, se debería ver algo como lo mostrado a continuación:
-
-    ```sh
-    # TYPE healthcheck_requests_total counter
-    healthcheck_requests_total 26.0
-    ```
-
-  - También se ha credo un contador para el número total de llamadas al servidor `server_requests_total`, por lo que este valor debería ser la suma de los dos anteriores, tal y como se puede ver a continuación:
-
-    ```sh
-    # TYPE server_requests_total counter
-    server_requests_total 30.0
-    ```
-
-## Tests
-
-Se ha implementado tests unitarios para probar el servidor FastAPI, estos están disponibles en el archivo `src/tests/app_test.py`.
-
-Es posible ejecutar los tests de diferentes formas:
-
-- Ejecución de todos los tests:
-
-    ```sh
-    pytest
-    ```
-
-- Ejecución de todos los tests y mostrar cobertura:
-
-    ```sh
-    pytest --cov
-    ```
-
-- Ejecución de todos los tests y generación de report de cobertura:
-
-    ```sh
-    pytest --cov --cov-report=html
-    ```
-
-## Practica a realizar
-
-A partir del ejemplo inicial descrito en los apartados anteriores es necesario realizar una serie de mejoras:
-
-Los requirimientos son los siguientes:
-
-- Añadir por lo menos un nuevo endpoint a los existentes `/` y `/health`, un ejemplo sería `/bye` que devolvería `{"msg": "Bye Bye"}`, para ello será necesario añadirlo en el fichero [src/application/app.py](./src/application/app.py)
-
-- Creación de tests unitarios para el nuevo endpoint añadido, para ello será necesario modificar el [fichero de tests](./src/tests/app_test.py)
-
-- Opcionalmente creación de helm chart para desplegar la aplicación en Kubernetes, se dispone de un ejemplo de ello en el laboratorio realizado en la clase 3
-
-- Creación de pipelines de CI/CD en cualquier plataforma (Github Actions, Jenkins, etc) que cuenten por lo menos con las siguientes fases:
-
-  - Testing: tests unitarios con cobertura. Se dispone de un [ejemplo con Github Actions en el repositorio actual](./.github/workflows/test.yaml)
-
-  - Build & Push: creación de imagen docker y push de la misma a cualquier registry válido que utilice alguna estrategia de release para los tags de las vistas en clase, se recomienda GHCR ya incluido en los repositorios de Github. Se dispone de un [ejemplo con Github Actions en el repositorio actual](./.github/workflows/release.yaml)
-
-- Configuración de monitorización y alertas:
-
-  - Configurar monitorización mediante prometheus en los nuevos endpoints añadidos, por lo menos con la siguiente configuración:
-    - Contador cada vez que se pasa por el/los nuevo/s endpoint/s, tal y como se ha realizado para los endpoints implementados inicialmente
-
-  - Desplegar prometheus a través de Kubernetes mediante minikube y configurar alert-manager para por lo menos las siguientes alarmas, tal y como se ha realizado en el laboratorio del día 3 mediante el chart `kube-prometheus-stack`:
-    - Uso de CPU de un contenedor mayor al del límite configurado, se puede utilizar como base el ejemplo utilizado en el laboratorio 3 para mandar alarmas cuando el contenedor de la aplicación `fast-api` consumía más del asignado mediante request
-
-  - Las alarmas configuradas deberán tener severity high o critical
-
-  - Crear canal en slack `<nombreAlumno>-prometheus-alarms` y configurar webhook entrante para envío de alertas con alert manager
-
-  - Alert manager estará configurado para lo siguiente:
-    - Mandar un mensaje a Slack en el canal configurado en el paso anterior con las alertas con label "severity" y "critical"
-    - Deberán enviarse tanto alarmas como recuperación de las mismas
-    - Habrá una plantilla configurada para el envío de alarmas
-
-    Para poder comprobar si esta parte funciona se recomienda realizar una prueba de estres, como la realizada en el laboratorio 3 a partir del paso 8.
-
-  - Creación de un dashboard de Grafana, con por lo menos lo siguiente:
-    - Número de llamadas a los endpoints
-    - Número de veces que la aplicación ha arrancado
-
-## Entregables
-
-Se deberá entregar mediante un repositorio realizado a partir del original lo siguiente:
-
-- Código de la aplicación y los tests modificados
-- Ficheros para CI/CD configurados y ejemplos de ejecución válidos
-- Ficheros para despliegue y configuración de prometheus de todo lo relacionado con este, así como el dashboard creado exportado a `JSON` para poder reproducirlo
-- `README.md` donde se explique como se ha abordado cada uno de los puntos requeridos en el apartado anterior, con ejemplos prácticos y guía para poder reproducir cada uno de ellos
+#### Ejecución de tests
+
+```bash
+# Activar entorno virtual
+source venv/bin/activate
+
+# Ejecutar todos los tests
+pytest
+
+# Ejecutar tests con cobertura
+pytest --cov
+
+# Generar informe de cobertura HTML
+pytest --cov --cov-report=html
+```
+
+### 3. Helm Chart
+
+Se ha creado un Helm Chart para facilitar el despliegue en Kubernetes, ubicado en el directorio `helm/simple-server-chart/`.
+
+#### Estructura del chart
+
+```
+simple-server-chart/
+├── Chart.yaml              # Información del chart
+├── values.yaml             # Valores configurables
+└── templates/
+    ├── deployment.yaml     # Recursos para el Deployment
+    ├── service.yaml        # Recursos para el Service
+    └── _helpers.tpl        # Plantillas de ayuda
+```
+
+#### Principales configuraciones
+
+- **Deployment**: Configura la imagen de Docker, recursos (CPU/memoria), sondas de salud y puertos.
+- **Service**: Expone la aplicación dentro del cluster en los puertos 8081 y 8000.
+
+#### Despliegue con Helm
+
+```bash
+# Instalar el chart
+helm install my-server ./simple-server-chart
+
+# Verificar la instalación
+kubectl get deployments
+kubectl get services
+kubectl get pods
+
+# Acceder a la aplicación (en Minikube)
+minikube service my-server-simple-server-chart
+```
+
+### 4. Pipelines CI/CD
+
+Se han configurado pipelines de CI/CD utilizando CircleCI para automatizar el proceso de testing, construcción y publicación de la imagen Docker.
+
+#### Pipeline con CircleCI
+
+Para la integración continua y despliegue continuo, se ha configurado CircleCI en el archivo `.circleci/config.yml`:
+
+```yaml
+version: 2.1
+
+# Orbs son paquetes reutilizables de configuración CircleCI
+orbs:
+  docker: circleci/docker@2.4.0
+
+jobs:
+  build:
+    docker:
+      # Imagen de Python 3.12
+      - image: cimg/python:3.12
+    
+    steps:
+      # Paso 1: Checkout del código
+      - checkout
+      
+      # Paso 2: Configuración de entorno Docker
+      - setup_remote_docker
+      
+      # Paso 3: Restaurar cache de dependencias (si existe)
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "requirements.txt" }}
+            # Fallback a la última cache si no hay coincidencia exacta
+            - v1-dependencies-
+      
+      # Paso 4: Instalación de dependencias
+      - run:
+          name: Instalar dependencias
+          command: |
+            # Verificar la versión de Python
+            python3 --version
+            
+            # Instalar dependencias directamente sin entorno virtual
+            python3 -m pip install --user --upgrade pip
+            
+            # Instalar desde requirements.txt
+            python3 -m pip install --user -r requirements.txt
+            
+            # Instalar herramientas de desarrollo para CI/CD
+            python3 -m pip install --user pytest pytest-cov flake8 httpx
+      
+      # Paso 5: Guardar cache de dependencias
+      - save_cache:
+          paths:
+            - ~/.local/lib/python3.12/site-packages
+          key: v1-dependencies-{{ checksum "requirements.txt" }}
+          
+      # Paso 6: Ejecutar linting
+      - run:
+          name: Ejecutar linting
+          command: |
+            # Solo analizar los archivos de nuestro proyecto, excluyendo venv y carpetas de dependencias
+            python3 -m flake8 --exclude=venv,\
+            .git,\
+            __pycache__,\
+            .pytest_cache,\
+            .eggs,\
+            *.egg,\
+            build,\
+            dist \
+            --count --select=E9,F63,F7,F82 --show-source --statistics
+      
+      # Paso 7: Ejecutar tests
+      - run:
+          name: Ejecutar tests
+          command: |
+            export PYTHONPATH=$PYTHONPATH:$(pwd)
+            python3 -m pytest --cov=./ --cov-report=xml
+          
+      # Paso 8: Almacenar resultados de tests
+      - store_artifacts:
+          path: coverage.xml
+          destination: coverage-report
+
+  # Job para construir y publicar imagen Docker
+  build_and_push_image:
+    executor: docker/docker
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Login a GitHub Container Registry
+          command: |
+            echo "$GITHUB_TOKEN" | docker login ghcr.io -u $GITHUB_USERNAME --password-stdin
+      - run:
+          name: Construir imagen Docker
+          command: |
+            # Generar tag basado en el hash del commit
+            DOCKER_TAG=$(echo ${CIRCLE_SHA1} | cut -c -7)
+            
+            # Construir la imagen con múltiples tags
+            docker build -t ghcr.io/${DOCKER_IMAGE_NAME}:${DOCKER_TAG} \
+                         -t ghcr.io/${DOCKER_IMAGE_NAME}:latest \
+                         --label org.opencontainers.image.source=${CIRCLE_REPOSITORY_URL} \
+                         --label org.opencontainers.image.revision=${CIRCLE_SHA1} \
+                         .
+      - run:
+          name: Publicar imagen Docker
+          command: |
+            # Publicar todas las versiones de la imagen
+            DOCKER_TAG=$(echo ${CIRCLE_SHA1} | cut -c -7)
+            docker push ghcr.io/${DOCKER_IMAGE_NAME}:${DOCKER_TAG}
+            docker push ghcr.io/${DOCKER_IMAGE_NAME}:latest
+
+workflows:
+  version: 2
+  build_test_deploy:
+    jobs:
+      - build
+      - build_and_push_image:
+          requires:
+            - build
+          filters:
+            branches:
+              only: main
+```
+
+El pipeline de CircleCI está configurado para:
+
+1. **Job de Build y Test**:
+   - Checkout del código
+   - Instala las dependencias de Python
+   - Ejecuta análisis estático de código (linting)
+   - Ejecuta tests unitarios con cobertura
+   - Almacena el informe de cobertura como artefacto
+
+2. **Job de Build y Push de imagen Docker**:
+   - Se ejecuta solo después de que el job de build es exitoso
+   - Solo se ejecuta en la rama main
+   - Genera tags basados en el hash del commit
+   - Publica la imagen en GitHub Container Registry
+
+3. **Variables de entorno requeridas**:
+   - `GITHUB_TOKEN`: Token de acceso a GitHub con permisos para publicar paquetes
+   - `GITHUB_USERNAME`: Nombre de usuario de GitHub
+   - `DOCKER_IMAGE_NAME`: Nombre de la imagen Docker (ej. "usuario/simple-server")
+
+### 5. Monitorización y alertas
+
+#### 5.1 Métricas Prometheus para el nuevo endpoint
+
+Se ha configurado un contador para el nuevo endpoint `/bye` en el archivo `src/application/app.py`:
+
+```python
+BYE_ENDPOINT_REQUESTS = Counter('app_bye_requests_total', 'Total bye endpoint requests')
+```
+
+#### 5.2 Despliegue de Prometheus y Alertmanager
+
+Se ha utilizado el chart `kube-prometheus-stack` para desplegar Prometheus, Alertmanager y Grafana en Kubernetes:
+
+```bash
+# Añadir el repositorio de Prometheus
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+
+# Instalar kube-prometheus-stack con configuración personalizada
+helm install monitoring prometheus-community/kube-prometheus-stack -f prometheus-values.yaml
+```
+
+El archivo `prometheus-values.yaml` contiene la configuración necesaria para Prometheus y Alertmanager.
+
+#### 5.3 Configuración de alertas
+
+Se han configurado las siguientes alertas en Prometheus:
+
+```yaml
+# Alerta cuando el uso de CPU supera el límite configurado
+- alert: HighCpuUsage
+  expr: (container_cpu_usage_seconds_total{container="simple-server"} / container_spec_cpu_quota{container="simple-server"}) * 100 > 80
+  for: 1m
+  labels:
+    severity: critical
+  annotations:
+    summary: "High CPU usage detected"
+    description: "Container {{ $labels.container }} has high CPU usage: {{ $value }}%"
+```
+
+#### 5.4 Integración con Slack
+
+Se ha creado un canal en Slack y configurado un webhook para recibir alertas:
+
+```yaml
+# Configuración en prometheus-values.yaml
+alertmanager:
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      group_by: ['alertname', 'job']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      receiver: 'slack-notifications'
+      routes:
+      - match:
+          severity: critical
+        receiver: 'slack-notifications'
+    receivers:
+    - name: 'slack-notifications'
+      slack_configs:
+      - api_url: 'https://hooks.slack.com/services/XXXXX/YYYYY/ZZZZZ'
+        channel: '#mi-nombre-prometheus-alarms'
+        send_resolved: true
+        title: "{{ .GroupLabels.alertname }}"
+        text: >-
+          {{ range .Alerts }}
+            *Alert:* {{ .Annotations.summary }}
+            *Description:* {{ .Annotations.description }}
+            *Severity:* {{ .Labels.severity }}
+          {{ end }}
+```
+
+#### 5.5 Dashboard de Grafana
+
+Se ha creado un dashboard en Grafana para monitorizar la aplicación, que incluye:
+
+- Número de llamadas a cada endpoint (/, /health, /bye)
+- Número de veces que la aplicación ha arrancado
+- Uso de recursos (CPU/Memoria)
+
+El dashboard ha sido exportado a `grafana-dashboard.json` para facilitar su importación.
+
+## Guía de despliegue
+
+### 1. Despliegue local
+
+```bash
+# Clonar el repositorio
+git clone https://github.com/usuario/simple-server.git
+cd simple-server
+
+# Configurar entorno virtual
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Ejecutar tests
+pytest --cov
+
+# Ejecutar la aplicación
+python src/app.py
+```
+
+### 2. Despliegue con Docker
+
+```bash
+# Construir la imagen
+docker build -t simple-server:0.0.1 .
+
+# Ejecutar el contenedor
+docker run -d -p 8081:8081 -p 8000:8000 --name simple-server simple-server:0.0.1
+
+# Verificar logs
+docker logs -f simple-server
+```
+
+### 3. Despliegue en Kubernetes con Helm
+
+```bash
+# Iniciar Minikube
+minikube start
+
+# Cargar imagen en Minikube (si la imagen es local)
+minikube image load simple-server:0.0.1
+
+# Instalar el chart de Helm
+helm install my-server ./simple-server-chart
+
+# Verificar la instalación
+kubectl get pods
+kubectl get services
+
+# Exponer el servicio
+minikube service my-server-simple-server-chart
+```
+
+### 4. Despliegue de monitorización
+
+```bash
+# Instalar stack de Prometheus
+helm install monitoring prometheus-community/kube-prometheus-stack -f prometheus-values.yaml
+
+# Verificar instalación
+kubectl get pods -n monitoring
+
+# Acceder a Grafana
+kubectl port-forward svc/monitoring-grafana 3000:80 -n monitoring
+# Usuario: admin, contraseña: prom-operator (por defecto)
+
+# Importar dashboard
+# En Grafana: Dashboard -> Import -> Subir grafana-dashboard.json
+```
+
+## Verificación y pruebas
+
+### Pruebas de endpoints
+
+```bash
+# Endpoint principal
+curl -X GET http://localhost:8081/
+
+# Endpoint de salud
+curl -X GET http://localhost:8081/health
+
+# Nuevo endpoint de despedida
+curl -X GET http://localhost:8081/bye
+```
+
+### Verificación de métricas
+
+Acceder a las métricas de Prometheus en `http://localhost:8000` para ver los contadores:
+
+```
+# TYPE server_requests_total counter
+server_requests_total 30.0
+
+# TYPE healthcheck_requests_total counter
+healthcheck_requests_total 10.0
+
+# TYPE main_requests_total counter
+main_requests_total 15.0
+
+# TYPE app_bye_requests_total counter
+app_bye_requests_total 5.0
+```
+
+### Pruebas de estrés
+
+Para probar las alertas configuradas, se puede realizar una prueba de estrés:
+
+```bash
+# Instalar hey para pruebas de carga
+go install github.com/rakyll/hey@latest
+
+# Ejecutar prueba de carga
+hey -z 2m -c 50 http://localhost:8081/bye
+
+# Verificar que la alerta se ha activado en Alertmanager y en Slack
+```
+
+---
+
+Este proyecto fue desarrollado como práctica final del curso "Liberando Productos" del bootcamp de DevOps de KeepCoding.
